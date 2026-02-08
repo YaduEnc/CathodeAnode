@@ -1,0 +1,115 @@
+Here’s a clean context.txt you can directly paste into your project overview.
+No fluff. Clear logic. Structured. This is what evaluators and devs understand.
+
+⸻
+
+Project Context – University-Only Live Conversation Platform
+
+This project is a university-exclusive, consent-driven social interaction platform designed for students to meet, chat, and optionally connect outside the platform in a safe and structured way.
+
+The platform is not a traditional dating app. Instead, it focuses on guided, real-time conversations with clear stages and mutual consent at every step.
+
+⸻
+
+Authentication & Access Control
+	•	Only users with a verified university email ID can register.
+	•	Email-based OTP verification ensures authenticity.
+	•	One account per university email.
+	•	Users must be 18+ to participate.
+
+This guarantees a closed, trusted campus-only ecosystem.
+
+⸻
+
+User Profile Structure
+
+Each user completes a minimal profile containing:
+	•	Name or nickname
+	•	Course
+	•	Department
+	•	Academic year
+	•	Gender
+	•	Optional short bio
+
+No personal contact details are visible during chat stages.
+
+⸻
+
+Live Conversation Model
+	•	The platform uses real-time socket-based communication.
+	•	No chat history is stored (no chat stories).
+	•	Conversations exist only during the live session.
+	•	Once a chat ends, messages are permanently discarded.
+
+This design prioritizes privacy and reduces misuse.
+
+⸻
+
+Stage-Based Conversation Flow
+
+Each conversation progresses through controlled stages managed by the backend as a state machine.
+
+Stage 0 – Match Initiated
+	•	Two users are matched.
+	•	Live chat is enabled.
+	•	No personal data shared.
+
+Stage 1 – Icebreaker Phase
+	•	Users begin casual conversation.
+	•	Optional system prompts may appear to reduce awkwardness.
+	•	Triggered after a minimum message or time threshold.
+
+Stage 2 – Private Interest Check
+	•	Each user is privately asked:
+“Are you enjoying this conversation?”
+	•	Responses are hidden from the other user.
+	•	If both respond “Yes”, the chat continues.
+	•	If either responds “No”, the chat ends gracefully.
+
+Stage 3 – Mutual Engagement Phase
+	•	Deeper conversation is unlocked.
+	•	Additional reflection prompts may appear.
+	•	No notifications reveal individual decisions.
+
+Stage 4 – Connection Decision
+	•	Users are privately asked:
+“Do you want to connect outside this platform?”
+	•	Options: Yes / Not Now / No
+	•	Only a Yes + Yes outcome unlocks the next stage.
+
+Stage 5 – Contact Exchange & Exit
+	•	WhatsApp numbers are shared simultaneously.
+	•	In-app chat is locked after exchange.
+	•	The session ends permanently.
+
+⸻
+
+Consent & Safety Principles
+	•	No personal contact is shared without explicit mutual consent.
+	•	Rejection is silent and private.
+	•	Users can block or report at any time.
+	•	Ending a chat immediately terminates the session on both sides.
+
+⸻
+
+System Philosophy
+	•	Real-time, ephemeral communication
+	•	Privacy-first architecture
+	•	Mutual consent over algorithms
+	•	Clean entry and clean exit for every interaction
+
+⸻
+
+End Outcome
+
+The platform’s responsibility ends once both users mutually agree to connect outside the system.
+No long-term data retention, no forced engagement, and no pressure-driven interactions.
+
+⸻
+
+If you want next:
+	•	I can convert this into SRS format
+	•	Or give you backend state-machine logic
+	•	Or write socket event flow (JOIN_CHAT, INTEREST_CHECK, END_CHAT)
+
+You’re building this the right way.
