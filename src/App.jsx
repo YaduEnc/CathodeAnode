@@ -9,7 +9,7 @@ import { supabase } from './supabase';
  */
 
 const App = () => {
-  const [view, setView] = useState('landing'); // 'landing', 'auth-signup', 'auth-login', 'onboarding', 'matching', 'auth-sent', 'dashboard', 'profile'
+  const [view, setView] = useState('landing'); // 'landing', 'auth-signup', 'auth-login', 'onboarding', 'dashboard', 'profile', 'about'
   const [session, setSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [activeChat, setActiveChat] = useState(null);
@@ -18,36 +18,34 @@ const App = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    const authListener = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
-      if (session) await fetchProfile(session.user.id);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      if (session) await fetchProfile(session.user.id);
-      else {
+      if (session) {
+        await fetchProfile(session.user.id);
+      } else {
         setUserProfile(null);
         setActiveChat(null);
         setView('landing');
       }
     });
 
-    // Listen for new chats
-    const chatSubscription = supabase
-      .channel('public:chats')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chats' }, payload => {
-        const chat = payload.new;
-        if (session && (chat.user1_id === session.user.id || chat.user2_id === session.user.id)) {
-          setActiveChat(chat);
-          setView('chat');
-        }
-      })
-      .subscribe();
+    let chatSubscription;
+    if (session) {
+      chatSubscription = supabase
+        .channel('public:chats')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chats' }, payload => {
+          const chat = payload.new;
+          if (chat.user1_id === session.user.id || chat.user2_id === session.user.id) {
+            setActiveChat(chat);
+            setView('chat');
+          }
+        })
+        .subscribe();
+    }
 
     return () => {
-      subscription.unsubscribe();
-      supabase.removeChannel(chatSubscription);
+      if (authListener.data.subscription) authListener.data.subscription.unsubscribe();
+      if (chatSubscription) supabase.removeChannel(chatSubscription);
     };
   }, [session]);
 
@@ -103,63 +101,72 @@ const App = () => {
   return (
     <div className="app-wrapper">
       <AnimatePresence mode="wait">
-        {!session && view === 'landing' && (
-          <LandingView key="landing" onJoin={() => setView('auth-signup')} onLogin={() => setView('auth-login')} />
-        )}
-
-        {!session && (view === 'auth-signup' || view === 'auth-login') && (
-          <AuthView
-            key="auth"
-            type={view === 'auth-signup' ? 'signup' : 'login'}
-            email={email}
-            setEmail={setEmail}
-            error={error}
-            loading={loading}
-            onSubmit={(e) => handleEmailAuth(e, view === 'auth-signup' ? 'signup' : 'login')}
-            onBack={() => setView('landing')}
-            onSwitch={() => setView(view === 'auth-signup' ? 'auth-login' : 'auth-signup')}
-          />
-        )}
-
-        {!session && view === 'auth-sent' && (
-          <AuthSentView
-            key="auth-sent"
-            email={email}
-            onBack={() => setView('auth-login')}
-          />
-        )}
-
-        {session && (view === 'onboarding' || view === 'dashboard' || view === 'profile') && (
-          view === 'onboarding' ? (
-            <OnboardingView
-              key="onboarding"
-              session={session}
-              onComplete={() => fetchProfile(session.user.id)}
-            />
-          ) : view === 'dashboard' ? (
-            <DashboardView
-              key="dashboard"
-              profile={userProfile}
-              onGoToProfile={() => setView('profile')}
-              onLogout={() => supabase.auth.signOut()}
-            />
-          ) : view === 'profile' ? (
-            <ProfileView
-              key="profile"
-              profile={userProfile}
-              onBack={() => setView('dashboard')}
-              onUpdate={async () => await fetchProfile(session.user.id)}
-            />
+        {loading && !session ? (
+          <div className="loading-screen" key="loading">
+            <Sparkles className="spin" size={40} color="var(--accent-pink)" />
+          </div>
+        ) : (
+          !session ? (
+            view === 'landing' ? (
+              <LandingView
+                key="landing"
+                onJoin={() => setView('auth-signup')}
+                onLogin={() => setView('auth-login')}
+                setView={setView}
+              />
+            ) : view === 'about' ? (
+              <AboutView key="about" onBack={() => setView('landing')} />
+            ) : (view === 'auth-signup' || view === 'auth-login') ? (
+              <AuthView
+                key="auth"
+                type={view === 'auth-signup' ? 'signup' : 'login'}
+                email={email}
+                setEmail={setEmail}
+                error={error}
+                loading={loading}
+                onSubmit={(e) => handleEmailAuth(e, view === 'auth-signup' ? 'signup' : 'login')}
+                onBack={() => setView('landing')}
+                onSwitch={() => setView(view === 'auth-signup' ? 'auth-login' : 'auth-signup')}
+              />
+            ) : view === 'auth-sent' ? (
+              <AuthSentView
+                key="auth-sent"
+                email={email}
+                onBack={() => setView('auth-login')}
+              />
+            ) : null
           ) : (
-            <ChatView
-              key="chat"
-              profile={userProfile}
-              chat={activeChat}
-              onClose={() => {
-                setActiveChat(null);
-                setView('dashboard');
-              }}
-            />
+            (view === 'onboarding' || !userProfile) ? (
+              <OnboardingView
+                key="onboarding"
+                session={session}
+                onComplete={() => fetchProfile(session.user.id)}
+              />
+            ) : view === 'dashboard' ? (
+              <DashboardView
+                key="dashboard"
+                profile={userProfile}
+                onGoToProfile={() => setView('profile')}
+                onLogout={() => supabase.auth.signOut()}
+              />
+            ) : view === 'profile' ? (
+              <ProfileView
+                key="profile"
+                profile={userProfile}
+                onBack={() => setView('dashboard')}
+                onUpdate={async () => await fetchProfile(session.user.id)}
+              />
+            ) : view === 'chat' ? (
+              <ChatView
+                key="chat"
+                profile={userProfile}
+                chat={activeChat}
+                onClose={() => {
+                  setActiveChat(null);
+                  setView('dashboard');
+                }}
+              />
+            ) : null
           )
         )}
       </AnimatePresence>
@@ -169,7 +176,7 @@ const App = () => {
 
 /* --- Sub-Components --- */
 
-const LandingView = ({ onJoin, onLogin }) => {
+const LandingView = ({ onJoin, onLogin, setView }) => {
   return (
     <div className="landing-wrapper">
       <div className="pink-gradient-bg">
@@ -182,12 +189,15 @@ const LandingView = ({ onJoin, onLogin }) => {
         <div className="container nav-flex">
           <div className="logo-area">
             <Heart size={24} fill="var(--accent-pink)" className="heart-icon" />
-            <span className="logo-text">CathoneAnode</span>
+            <span className="logo-text">CathodeAnode</span>
           </div>
           <div className="nav-links">
-            <a href="#about">About</a>
-            <button className="btn-secondary nav-btn" onClick={onLogin}>Log In</button>
-            <button className="btn-primary nav-btn" onClick={onJoin}>Join Now</button>
+            <button className="nav-link-btn" onClick={() => setView('about')}>About</button>
+            <a href="#features">Features</a>
+          </div>
+          <div className="nav-auth">
+            <button className="btn-secondary" onClick={onLogin}>Log In</button>
+            <button className="btn-primary" onClick={onJoin}>Join Now</button>
           </div>
         </div>
       </nav>
@@ -249,7 +259,7 @@ const LandingView = ({ onJoin, onLogin }) => {
             >
               <h2>The Aesthetic of Connection.</h2>
               <p>
-                From late-night study sessions to weekend vibes, CathoneAnode is where the campus heartbeat lives.
+                From late-night study sessions to weekend vibes, CathodeAnode is where the campus heartbeat lives.
                 Experience a platform designed for your generation—minimal, high-tech, and high-vibe.
               </p>
               <button className="btn-secondary large" onClick={onJoin}>Explore Culture</button>
@@ -261,7 +271,7 @@ const LandingView = ({ onJoin, onLogin }) => {
               viewport={{ once: true }}
             >
               <div className="feature-img-card">
-                <img src="/Users/sujeetkumarsingh/.gemini/antigravity/brain/799b51d3-b7db-44f4-87ca-7b9842fd572c/campus_vibes_photo_1770592469338.png" alt="Campus Vibes" />
+                <img src="/assets/campus_vibes.png" alt="Campus Vibes" />
               </div>
             </motion.div>
           </div>
@@ -271,13 +281,13 @@ const LandingView = ({ onJoin, onLogin }) => {
       <section className="feature-showcase section-padding">
         <div className="container">
           <div className="section-header text-center">
-            <h2 className="section-title">Why CathoneAnode?</h2>
+            <h2 className="section-title">Why CathodeAnode?</h2>
             <p className="section-subtitle">"It's the vibe for me" — every student ever.</p>
           </div>
           <div className="features-grid">
             <div className="feature-card glass-card">
               <div className="feature-img-card small">
-                <img src="/Users/sujeetkumarsingh/.gemini/antigravity/brain/799b51d3-b7db-44f4-87ca-7b9842fd572c/premium_vib_asset_1770592447841.png" alt="Premium Vibes" />
+                <img src="/assets/premium_vib.png" alt="Premium Vibes" />
               </div>
               <h3>Premium Feeling</h3>
               <p>Designed with the same obsession as your favorite tech products. Pure luxury.</p>
@@ -296,13 +306,55 @@ const LandingView = ({ onJoin, onLogin }) => {
         </div>
       </section>
 
+      <section className="rules-section section-padding">
+        <div className="container rules-container">
+          <div className="section-header text-center">
+            <h2 className="section-title">Rules of the Anode</h2>
+            <p className="section-subtitle">Keep it high-vibe, keep it safe. No cap.</p>
+          </div>
+          <div className="rules-grid">
+            <div className="rule-card">
+              <span className="icon-label">🛡️</span>
+              <h3>No Fakes Allowed</h3>
+              <p>Verified university emails only. If you're not a student, you're not in the circle.</p>
+            </div>
+            <div className="rule-card">
+              <span className="icon-label">✨</span>
+              <h3>Main Character Energy</h3>
+              <p>Be yourself. Authentic vibes only. Respect the spark or leave it be.</p>
+            </div>
+            <div className="rule-card">
+              <span className="icon-label">🔒</span>
+              <h3>Zero Drama</h3>
+              <p>Safety benchmarks are industry-leading. Disrespect is an instant ban. Stay classy.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="hype-cta">
+        <div className="container">
+          <motion.div
+            className="hype-card"
+            whileHover={{ scale: 1.02 }}
+            transition={{ type: "spring", stiffness: 300 }}
+          >
+            <h2>Ready to find your match?</h2>
+            <p>Join 2,000+ students already catching the vibe.</p>
+            <button className="btn-primary large" style={{ background: 'white', color: 'var(--accent-pink)' }} onClick={onJoin}>
+              Join CathodeAnode Now
+            </button>
+          </motion.div>
+        </div>
+      </section>
+
       <footer className="main-footer">
         <div className="container">
           <div className="footer-top">
             <div className="footer-brand">
               <div className="logo-area">
                 <Heart size={24} fill="var(--accent-pink)" />
-                <span className="logo-text">CathoneAnode</span>
+                <span className="logo-text">CathodeAnode</span>
               </div>
               <p>Happier campus connections starts here.</p>
             </div>
@@ -316,7 +368,7 @@ const LandingView = ({ onJoin, onLogin }) => {
             </div>
           </div>
           <div className="footer-bottom">
-            <p>&copy; 2026 CathoneAnode. Developed for the Culture.</p>
+            <p>&copy; 2026 CathodeAnode. Developed for the Culture.</p>
           </div>
         </div>
       </footer>
@@ -339,7 +391,7 @@ const AuthView = ({ type, email, setEmail, error, loading, onSubmit, onBack, onS
       <div className="auth-card glass-card">
         <div className="auth-logo">
           <Heart fill="var(--accent-pink)" size={32} />
-          <span className="logo-text">UniConnect</span>
+          <span className="logo-text">CathodeAnode</span>
         </div>
         <h2 className="auth-title">{type === 'signup' ? 'Create Account' : 'Welcome Back'}</h2>
         <p className="auth-subtitle">
@@ -643,7 +695,7 @@ const DashboardView = ({ profile, onGoToProfile, onLogout }) => {
         <div className="container nav-flex">
           <div className="logo-area">
             <Heart size={24} fill="var(--accent-pink)" />
-            <span className="logo-text">UniConnect</span>
+            <span className="logo-text">CathodeAnode</span>
           </div>
           <div className="user-menu">
             <button className="icon-btn" onClick={onGoToProfile}>
@@ -1004,7 +1056,7 @@ const ChatView = ({ profile, chat, onClose }) => {
           <div className="chat-stage-info">
             <Phone size={48} color="var(--accent-pink)" />
             <h3>Stage 3: Contact Revealed!</h3>
-            <p>You both have revealed your WhatsApp numbers. Connect outside UniConnect!</p>
+            <p>You both have revealed your WhatsApp numbers. Connect outside CathodeAnode!</p>
             <p className="contact-info">
               <Phone size={18} /> {otherUserProfile.whatsapp}
             </p>
@@ -1321,3 +1373,78 @@ const AuthSentView = ({ email, onBack }) => {
 };
 
 export default App;
+
+const AboutView = ({ onBack }) => {
+  return (
+    <motion.div
+      className="about-container"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <nav className="navbar glass-card splash-nav">
+        <div className="container nav-flex">
+          <div className="logo-area" onClick={onBack} style={{ cursor: 'pointer' }}>
+            <Heart size={24} fill="var(--accent-pink)" />
+            <span className="logo-text">CathodeAnode</span>
+          </div>
+          <button className="btn-secondary" onClick={onBack}>Back to Home</button>
+        </div>
+      </nav>
+
+      <main className="container about-content">
+        <section className="about-hero text-center">
+          <h1 className="gradient-text">Beyond Just Chatting.</h1>
+          <p>We're building the infrastructure for authentic campus connections.</p>
+        </section>
+
+        <section className="about-sections">
+          <div className="glass-card mission-card">
+            <h2>The Mission 🚀</h2>
+            <p>
+              In a world of dry texts and superficial scrolls, CathodeAnode was born to bring back the "Main Character Energy"
+              to campus social life. We believe your university years should be filled with spontaneous conversations,
+              genuine matches, and absolute digital safety.
+            </p>
+          </div>
+
+          <div className="values-grid">
+            <div className="value-item glass-card">
+              <div className="icon-circle"><ShieldCheck size={32} /></div>
+              <h3>Privacy First</h3>
+              <p>Your data never leaves your campus domain. No shadow profiles, no tracking.</p>
+            </div>
+            <div className="value-item glass-card">
+              <div className="icon-circle"><Zap size={32} /></div>
+              <h3>Real-Time Vibes</h3>
+              <p>No waiting for days. Match instantly, chat instantly, feel the vibe instantly.</p>
+            </div>
+            <div className="value-item glass-card">
+              <div className="icon-circle"><Heart size={32} /></div>
+              <h3>Consent Logic</h3>
+              <p>Our 5-stage reveal ensures you're always in control of who knows your name.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="about-cta text-center">
+          <h2>Ready to Catch the Anode?</h2>
+          <button className="btn-primary large" onClick={onBack}>Join the Circle Now</button>
+        </section>
+      </main>
+
+      <footer className="main-footer">
+        <div className="container">
+          <div className="footer-bottom">
+            <p>&copy; 2026 CathodeAnode. Developed for the Culture.</p>
+          </div>
+        </div>
+      </footer>
+
+      <div className="pink-gradient-bg">
+        <div className="pink-orb orb-1"></div>
+        <div className="pink-orb orb-2"></div>
+      </div>
+    </motion.div>
+  );
+};
