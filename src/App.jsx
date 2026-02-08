@@ -17,67 +17,94 @@ const App = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    // 1. Initial Session Check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchProfile(session.user.id);
-    });
+  const isInitialMount = useRef(true);
 
-    // 2. Auth State Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+  useEffect(() => {
+    // 1. Single Auth Listener (handles INITIAL_SESSION and all changes)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth Event:", event, session?.user?.email);
       setSession(session);
+
       if (session) {
         await fetchProfile(session.user.id);
       } else {
         setUserProfile(null);
         setActiveChat(null);
-        setView('landing');
+        if (event === 'SIGNED_OUT') setView('landing');
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []); // Run once on mount
+  }, []);
 
-  // 3. Separate Effect for Chat Subscriptions (Depends on session)
+  // 2. Stable Chat Subscription
   useEffect(() => {
-    let chatSubscription;
-    if (session) {
-      chatSubscription = supabase
-        .channel('public:chats')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chats' }, payload => {
-          const chat = payload.new;
-          if (chat.user1_id === session.user.id || chat.user2_id === session.user.id) {
-            setActiveChat(chat);
-            setView('chat');
-          }
-        })
-        .subscribe();
-    }
+    if (!session?.user?.id) return;
+
+    console.log("Setting up Realtime for:", session.user.id);
+    const chatSubscription = supabase
+      .channel(`user-chats-${session.user.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chats',
+        filter: `user1_id=eq.${session.user.id}`
+      }, payload => {
+        console.log("Incoming Chat (U1):", payload.new);
+        setActiveChat(payload.new);
+        setView('chat');
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chats',
+        filter: `user2_id=eq.${session.user.id}`
+      }, payload => {
+        console.log("Incoming Chat (U2):", payload.new);
+        setActiveChat(payload.new);
+        setView('chat');
+      })
+      .subscribe((status) => {
+        console.log("Realtime Status:", status);
+      });
 
     return () => {
-      if (chatSubscription) supabase.removeChannel(chatSubscription);
+      console.log("Cleaning up Realtime");
+      supabase.removeChannel(chatSubscription);
     };
-  }, [session]);
+  }, [session?.user?.id]);
 
   const fetchProfile = async (userId) => {
     try {
+      console.log("Fetching profile for:", userId);
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle(); // maybeSingle is safer for 406/404 issues
+
+      if (error) {
+        console.error("Supabase Profile Error:", error);
+        // If 406, check if table exists or if RLS is broken
+        if (error.code === 'PGRST106') {
+          console.warn("Possible schema mismatch or table missing.");
+        }
+        setView('onboarding');
+        return;
+      }
 
       if (profile) {
+        console.log("Profile found:", profile.username);
         setUserProfile(profile);
         setView('dashboard');
       } else {
+        console.log("No profile found, redirecting to onboarding");
         setView('onboarding');
       }
     } catch (err) {
-      console.error("Error fetching profile:", err);
+      console.error("Critical Profile Fetch Error:", err);
       setView('onboarding');
     }
   };
