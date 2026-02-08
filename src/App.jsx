@@ -18,7 +18,14 @@ const App = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const authListener = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // 1. Initial Session Check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+    });
+
+    // 2. Auth State Listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       if (session) {
         await fetchProfile(session.user.id);
@@ -29,6 +36,13 @@ const App = () => {
       }
     });
 
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []); // Run once on mount
+
+  // 3. Separate Effect for Chat Subscriptions (Depends on session)
+  useEffect(() => {
     let chatSubscription;
     if (session) {
       chatSubscription = supabase
@@ -44,7 +58,6 @@ const App = () => {
     }
 
     return () => {
-      if (authListener.data.subscription) authListener.data.subscription.unsubscribe();
       if (chatSubscription) supabase.removeChannel(chatSubscription);
     };
   }, [session]);
@@ -86,6 +99,7 @@ const App = () => {
         email: email,
         options: {
           shouldCreateUser: type === 'signup',
+          emailRedirectTo: window.location.origin,
         }
       });
 
