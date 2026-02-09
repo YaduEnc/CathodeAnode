@@ -25,9 +25,9 @@ const App = () => {
       console.log("Auth Event:", event, session?.user?.email);
       setSession(session);
 
-      if (session) {
+      if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
         await fetchProfile(session.user.id);
-      } else {
+      } else if (!session) {
         setUserProfile(null);
         setActiveChat(null);
         if (event === 'SIGNED_OUT') setView('landing');
@@ -96,7 +96,7 @@ const App = () => {
       }
 
       if (profile) {
-        console.log("Profile found:", profile.username);
+        console.log("Profile found:", profile.name);
         setUserProfile(profile);
         setView('dashboard');
       } else {
